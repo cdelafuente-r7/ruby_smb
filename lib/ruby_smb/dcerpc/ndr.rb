@@ -13,14 +13,19 @@ module RubySMB
 
       # An NDR Conformant and Varying String representation as defined in
       # [Transfer Syntax NDR - Conformant and Varying Strings](http://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_04_02)
-      # The string elements are Stringz16 (unicode)
+      # The string elements are Stringz16 (unicode) by default. Set
+      # :zero_terminated parameter to false to use String16 instead
       class NdrString < BinData::Primitive
+        default_parameters zero_terminated: true
         endian :little
 
         uint32    :max_count
         uint32    :offset, initial_value: 0
         uint32    :actual_count
-        stringz16 :str, max_length: -> { actual_count * 2 }, onlyif: -> { actual_count > 0 }
+        choice    :str, onlyif: -> { actual_count > 0 }, selection: :zero_terminated do
+          stringz16 true, max_length: -> { actual_count * 2 }
+          string16  false, length: -> { actual_count * 2 }
+        end
 
         def get
           self.actual_count == 0 ? 0 : self.str
@@ -36,7 +41,8 @@ module RubySMB
               if v.empty?
                 self.actual_count = 0
               else
-                self.actual_count = v.to_s.size + 1
+                self.actual_count = v.to_s.size
+                self.actual_count += 1 if eval_parameter(:zero_terminated)
                 self.max_count = self.actual_count
               end
             end
@@ -57,11 +63,30 @@ module RubySMB
 
       # An NDR Uni-dimensional Conformant Array of Bytes representation as defined in
       # [Transfer Syntax NDR - Uni-dimensional Conformant Arrays](https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_02)
-      class NdrLpByte < BinData::Primitive
+      #class NdrLpByte < BinData::Primitive
+      #  endian :little
+
+      #  uint32 :max_count, initial_value: -> { self.elements.size }
+      #  array  :elements, type: :uint8, read_until: -> { index == self.max_count - 1 }, onlyif: -> { self.max_count > 0 }
+
+      #  def get
+      #    self.elements
+      #  end
+
+      #  def set(v)
+      #    v = v.elements if v.is_a?(self.class)
+      #    self.elements = v.to_ary
+      #    self.max_count = self.elements.size unless self.elements.equal?(v)
+      #  end
+      #end
+
+      # An NDR Uni-dimensional Conformant Array representation as defined in
+      # [Transfer Syntax NDR - Uni-dimensional Conformant Arrays](https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_02)
+      # This class needs to be inherited and child class needs to implement the :elements array field
+      class NdrUniConfArray < BinData::Primitive
         endian :little
 
         uint32 :max_count, initial_value: -> { self.elements.size }
-        array  :elements, type: :uint8, read_until: -> { index == self.max_count - 1 }, onlyif: -> { self.max_count > 0 }
 
         def get
           self.elements
@@ -72,7 +97,90 @@ module RubySMB
           self.elements = v.to_ary
           self.max_count = self.elements.size unless self.elements.equal?(v)
         end
+
+        def do_read(io)
+          # If it is part of a NdrStruct, :max_count value has already been
+          # processed and it needs to be skipped
+          # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+          process_max_count? ? super(io) : self.elements.do_read(io)
+        end
+
+        def do_write(io)
+          # If it is part of a NdrStruct, :max_count value has already been
+          # processed and it needs to be skipped
+          # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+          process_max_count? ? super(io) : self.elements.do_write(io)
+        end
+
+        def process_max_count?
+          current_parent = parent
+          loop do
+            return true unless current_parent
+            return false if current_parent.is_a?(NdrStruct)
+            current_parent = current_parent.parent
+          end
+        end
       end
+
+      # An NDR Uni-dimensional Conformant Array of DWORDs representation as defined in
+      # [Transfer Syntax NDR - Uni-dimensional Conformant Arrays](https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_02)
+      class NdrUniConfDwordArray < NdrUniConfArray
+        endian :little
+
+        array  :elements, type: :uint32, read_until: -> { index == self.max_count - 1 }, onlyif: -> { self.max_count > 0 }
+      end
+
+      # An NDR Uni-dimensional Conformant Array of Bytes representation as defined in
+      # [Transfer Syntax NDR - Uni-dimensional Conformant Arrays](https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_02)
+      class NdrUniConfByteArray < NdrUniConfArray
+        endian :little
+
+        array  :elements, type: :uint8, read_until: -> { index == self.max_count - 1 }, onlyif: -> { self.max_count > 0 }
+      end
+
+
+
+      # An NDR Uni-dimensional Conformant Array of DWORDs representation as defined in
+      # [Transfer Syntax NDR - Uni-dimensional Conformant Arrays](https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_02)
+      #class NdrUniConfDwordArray < BinData::Primitive
+      #  endian :little
+
+      #  uint32 :max_count, initial_value: -> { self.elements.size }
+      #  array  :elements, type: :uint32, read_until: -> { index == self.max_count - 1 }, onlyif: -> { self.max_count > 0 }
+
+      #  def get
+      #    self.elements
+      #  end
+
+      #  def set(v)
+      #    v = v.elements if v.is_a?(self.class)
+      #    self.elements = v.to_ary
+      #    self.max_count = self.elements.size unless self.elements.equal?(v)
+      #  end
+
+      #  def do_read(io)
+      #    # If it is part of a NdrStruct, :max_count value has already been
+      #    # processed and it needs to be skipped
+      #    # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+      #    process_max_count? ? super(io) : self.elements.do_read(io)
+      #  end
+
+      #  def do_write(io)
+      #    # If it is part of a NdrStruct, :max_count value has already been
+      #    # processed and it needs to be skipped
+      #    # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+      #    process_max_count? ? super(io) : self.elements.do_write(io)
+      #  end
+
+      #  def process_max_count?
+      #    current_parent = parent
+      #    loop do
+      #      return true unless current_parent
+      #      return false if current_parent.is_a?(NdrStruct)
+      #      current_parent = current_parent.parent
+      #    end
+      #  end
+      #end
 
       # An NDR Uni-dimensional Conformant-varying Arrays of bytes representation as defined in:
       # [Transfer Syntax NDR - NDR Constructed Types](http://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_03_04)
@@ -269,9 +377,10 @@ module RubySMB
 
       # A pointer to a NdrString structure
       class NdrLpStr < NdrPointer
+        default_parameters zero_terminated: true
         endian :little
 
-        ndr_string :referent, onlyif: -> { self.referent_id != 0 }
+        ndr_string :referent, onlyif: -> { self.referent_id != 0 }, zero_terminated: :zero_terminated
       end
 
       class NdrLpDword < NdrPointer
@@ -308,6 +417,13 @@ module RubySMB
       class NdrStruct < BinData::Record
 
         def do_read(io)
+          # If we have arrays, its :max_count value is moved to the beginning
+          # of the structure
+          # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+          # This will need to be processed before the rest of the structure.
+          if self[field_names.last].is_a?(NdrUniConfDwordArray)
+            self[field_names.last].max_count.read(io)
+          end
           super(io)
           each_pair do |_name, field|
             case field
@@ -329,6 +445,13 @@ module RubySMB
         end
 
         def do_write(io)
+          # If we have arrays, its :max_count value is moved to the beginning
+          # of the structure
+          # (https://pubs.opengroup.org/onlinepubs/9629399/chap14.htm#tagcjh_19_03_07).
+          # This will need to be processed before the rest of the structure.
+          if self[field_names.last].is_a?(NdrUniConfDwordArray)
+            io.writebytes(self[field_names.last].max_count.to_binary_s)
+          end
           super(io)
           each_pair do |_name, field|
             case field

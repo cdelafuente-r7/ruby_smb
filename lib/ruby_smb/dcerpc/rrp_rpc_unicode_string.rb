@@ -33,6 +33,35 @@ module RubySMB
       rrp_unicode_string :referent, onlyif: -> { self.referent_id != 0 }
     end
 
+    # A RPC_UNICODE_STRING structure as defined in
+    # [2.3.10 RPC_UNICODE_STRING](https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/94a16bb6-c610-4cb9-8db6-26f15f560061)
+    class RpcUnicodeString < BinData::Primitive
+      endian :little
+
+      uint16     :buffer_length
+      uint16     :maximum_length
+      ndr_lp_str :buffer, zero_terminated: false
+
+      def get
+        self.buffer
+      end
+
+      def set(buf)
+        self.buffer = buf
+        self.buffer_length = self.buffer == :null ? 0 : self.buffer.referent.actual_count * 2
+        # Don't reset maximum_length if the buffer is NULL to make sure we can
+        # set it independently of the buffer size
+        return if self.maximum_length > 0 && self.buffer == :null
+        self.maximum_length = self.buffer.referent.max_count * 2
+      end
+    end
+
+    # A pointer to a RPC_UNICODE_STRING structure
+    class PrpcUnicodeString < Ndr::NdrPointer
+      endian :little
+
+      rpc_unicode_string :referent, onlyif: -> { self.referent_id != 0 }
+    end
   end
 end
 
