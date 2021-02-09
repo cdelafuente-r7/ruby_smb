@@ -9,8 +9,8 @@ module RubySMB
       # It also keeps track of the negotiated dialect.
       #
       # @return [void]
-      def negotiate
-        request_packet  = negotiate_request
+      def negotiate(req_packet: nil)
+        request_packet  = req_packet.nil? ? negotiate_request : req_packet
         raw_response    = send_recv(request_packet)
         response_packet = negotiate_response(raw_response)
         # The list of dialect identifiers sent to the server is stored

@@ -38,7 +38,7 @@ module RubySMB
 
         def valid?
           return false unless super
-          return false unless parameter_block.capabilities.extended_security == 1
+          #return false unless parameter_block.capabilities.extended_security == 1
           true
         end
 

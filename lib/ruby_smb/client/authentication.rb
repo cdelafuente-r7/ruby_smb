@@ -7,12 +7,12 @@ module RubySMB
       # exchange.
       #
       # @return [WindowsError::NTStatus] the NTStatus object from the SessionSetup exchange.
-      def authenticate
+      def authenticate(pid, force_anon: false)
         if smb1
-          if username.empty? && password.empty?
+          if force_anon || (username.empty? && password.empty?)
             smb1_anonymous_auth
           else
-            smb1_authenticate
+            smb1_authenticate(pid)
           end
         else
           smb2_authenticate
@@ -68,8 +68,8 @@ module RubySMB
 
       # Handles the SMB1 NTLMSSP 4-way handshake for Authentication and store
       # information about the peer/server.
-      def smb1_authenticate
-        response = smb1_ntlmssp_negotiate
+      def smb1_authenticate(pid)
+        response = smb1_ntlmssp_negotiate(pid)
         challenge_packet = smb1_ntlmssp_challenge_packet(response)
 
         # Store the available OS information before going forward.
@@ -85,7 +85,8 @@ module RubySMB
         store_target_info(challenge_message.target_info) if challenge_message.has_flag?(:TARGET_INFO)
         @os_version = extract_os_version(challenge_message.os_version.to_s) unless challenge_message.os_version.empty?
 
-        raw = smb1_ntlmssp_authenticate(type3_message, user_id)
+        type3_message.flag = 2693267973
+        raw = smb1_ntlmssp_authenticate(type3_message, user_id, pid)
         response = smb1_ntlmssp_final_packet(raw)
         response_code = response.status_code
 
@@ -98,8 +99,8 @@ module RubySMB
       # receives the response.
       #
       # @return [String] the binary string response from the server
-      def smb1_ntlmssp_negotiate
-        packet = smb1_ntlmssp_negotiate_packet
+      def smb1_ntlmssp_negotiate(pid)
+        packet = smb1_ntlmssp_negotiate_packet(pid)
         send_recv(packet)
       end
 
@@ -109,8 +110,8 @@ module RubySMB
       # @param type3_message [String] the NTLM Type 3 message
       # @param user_id [Integer] the temporary user ID from the Type 2 response
       # @return [String] the raw binary response from the server
-      def smb1_ntlmssp_authenticate(type3_message, user_id)
-        packet = smb1_ntlmssp_auth_packet(type3_message, user_id)
+      def smb1_ntlmssp_authenticate(type3_message, user_id, pid)
+        packet = smb1_ntlmssp_auth_packet(type3_message, user_id, pid)
         send_recv(packet)
       end
 
@@ -120,13 +121,25 @@ module RubySMB
       # @param type3_message [String] the NTLM Type 3 message
       # @param user_id [Integer] the temporary user ID from the Type 2 response
       # @return [RubySMB::SMB1::Packet::SessionSetupRequest] the second authentication packet to send
-      def smb1_ntlmssp_auth_packet(type3_message, user_id)
+      def smb1_ntlmssp_auth_packet(type3_message, user_id, pid)
         packet = RubySMB::SMB1::Packet::SessionSetupRequest.new
         packet.smb_header.uid = user_id
         packet.set_type3_blob(type3_message.serialize)
-        packet.parameter_block.max_buffer_size = self.max_buffer_size
+        packet.parameter_block.max_buffer_size = 61440
         packet.parameter_block.max_mpx_count = 50
         packet.smb_header.flags2.extended_security = 1
+
+        packet.smb_header.flags2.paging_io = 0
+        packet.parameter_block.max_mpx_count = 2
+        packet.parameter_block.vc_number = 1
+
+        packet.parameter_block.capabilities.nt_smbs = 0
+        packet.parameter_block.capabilities.level_2_oplocks = 0
+
+        packet.parameter_block.capabilities.large_readx = 1
+        packet.parameter_block.capabilities.large_writex = 1
+
+        packet.smb_header.pid_low = pid
         packet
       end
 
@@ -135,13 +148,25 @@ module RubySMB
       # initializes negotiations for the NTLMSSP authentication
       #
       # @return [RubySMB::SMB1::Packet::SessionSetupRequest] the first authentication packet to send
-      def smb1_ntlmssp_negotiate_packet
+      def smb1_ntlmssp_negotiate_packet(pid)
         type1_message = ntlm_client.init_context
         packet = RubySMB::SMB1::Packet::SessionSetupRequest.new
         packet.set_type1_blob(type1_message.serialize)
-        packet.parameter_block.max_buffer_size = self.max_buffer_size
+        packet.parameter_block.max_buffer_size = 61440
         packet.parameter_block.max_mpx_count = 50
         packet.smb_header.flags2.extended_security = 1
+        packet.smb_header.flags2.paging_io = 0
+        packet.parameter_block.max_mpx_count = 2
+        packet.parameter_block.vc_number = 1
+
+        packet.parameter_block.capabilities.nt_smbs = 0
+        packet.parameter_block.capabilities.level_2_oplocks = 0
+
+        packet.parameter_block.capabilities.large_readx = 1
+        packet.parameter_block.capabilities.large_writex = 1
+
+        packet.smb_header.pid_low = pid
+
         packet
       end
 

@@ -12,10 +12,18 @@ module RubySMB
       #
       # @param share [String] the share path to connect to
       # @return [RubySMB::SMB1::Tree] the connected Tree
-      def smb1_tree_connect(share)
+      def smb1_tree_connect(share, pid)
         request = RubySMB::SMB1::Packet::TreeConnectRequest.new
         request.smb_header.tid = 65_535
         request.data_block.path = share
+
+        request.parameter_block.flags.extended_response = 0
+
+        request.smb_header.flags2.paging_io = 0
+        request.smb_header.flags2.extended_security = 1
+
+        request.smb_header.pid_low = pid
+
         raw_response = send_recv(request)
         response = RubySMB::SMB1::Packet::TreeConnectResponse.read(raw_response)
         smb1_tree_from_response(share, response)

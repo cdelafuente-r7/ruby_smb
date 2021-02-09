@@ -368,16 +368,17 @@ module RubySMB
 
     # Performs protocol negotiation and session setup. It defaults to using
     # the credentials supplied during initialization, but can take a new set of credentials if needed.
-    def login(username: self.username, password: self.password, domain: self.domain, local_workstation: self.local_workstation)
-      negotiate
-      session_setup(username, password, domain, true,
-                    local_workstation: local_workstation)
+    def login(username: self.username, password: self.password, domain: self.domain, local_workstation: self.local_workstation, force_anon: false, req_packet: nil, pid: 0)
+      negotiate(req_packet: req_packet)
+      session_setup(username, password, domain, do_recv=true, pid,
+                    local_workstation: local_workstation,
+                    force_anon: force_anon)
     end
 
-    def session_setup(user, pass, domain, do_recv=true,
-                      local_workstation: self.local_workstation)
-      @domain            = domain
-      @local_workstation = local_workstation
+    def session_setup(user, pass, domain, do_recv=true, pid,
+                      local_workstation: self.local_workstation, force_anon: false)
+      @domain            = ''
+      @local_workstation = ''
       @password          = pass.encode('utf-8') || ''.encode('utf-8')
       @username          = user.encode('utf-8') || ''.encode('utf-8')
 
@@ -395,7 +396,7 @@ module RubySMB
           flags: flags
       )
 
-      authenticate
+      authenticate(pid, force_anon: force_anon)
     end
 
     # Sends a LOGOFF command to the remote server to terminate the session
@@ -443,7 +444,7 @@ module RubySMB
       case version
       when 'SMB1'
         packet.smb_header.uid = self.user_id if self.user_id
-        packet.smb_header.pid_low = self.pid if self.pid
+        packet.smb_header.pid_low = self.pid if self.pid && packet.smb_header.pid_low==0
         packet = smb1_sign(packet)
       when 'SMB2'
         packet = increment_smb_message_id(packet)
@@ -567,11 +568,11 @@ module RubySMB
     # @param share [String] the path to the share in `\\server\share_name` format
     # @return [RubySMB::SMB1::Tree] if talking over SMB1
     # @return [RubySMB::SMB2::Tree] if talking over SMB2
-    def tree_connect(share)
+    def tree_connect(share, pid)
       connected_tree = if smb2 || smb3
         smb2_tree_connect(share)
       else
-        smb1_tree_connect(share)
+        smb1_tree_connect(share, pid)
       end
       @tree_connects << connected_tree
       connected_tree
