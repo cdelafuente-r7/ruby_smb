@@ -120,6 +120,7 @@ module RubySMB
           self.server_max_buffer_size = packet.parameter_block.max_buffer_size - 260
           self.negotiated_smb_version = 1
           self.session_encrypt_data = false
+          self.server_guid = packet.data_block.server_guid
           'SMB1'
         when RubySMB::SMB2::Packet::NegotiateResponse
           self.smb1 = false
