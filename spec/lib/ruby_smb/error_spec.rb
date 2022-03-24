@@ -23,6 +23,7 @@ RSpec.describe RubySMB::Error::InvalidPacket do
       let(:packet) { RubySMB::SMB2::Packet::NegotiateResponse.new }
 
       it 'outputs the expected error message' do
+        $stderr.puts "========== debug message: #{WindowsError::NTStatus.find_by_retval(packet.status_code.value)}"
         expect(ex.to_s).to eq('Expecting SMB1 protocol with command=114 (extended_security=1), got SMB2 protocol with command=0 (extended_security=0), Status: (0x00000000) STATUS_SUCCESS: The operation completed successfully.')
       end
     end
