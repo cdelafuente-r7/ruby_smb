@@ -27,6 +27,7 @@ module RubySMB
       @gss_provider = gss_provider || Gss::Provider::NTLM.new
       # reject the wildcard dialect because it's not a real dialect we can use for this purpose
       @dialects = RubySMB::Dialect::ALL.keys.reject { |dialect| dialect == "0x%04x" % RubySMB::SMB2::SMB2_WILDCARD_REVISION }.reverse
+      @callbacks = {}
 
       case logger
       when nil
@@ -38,6 +39,8 @@ module RubySMB
       else
         @logger = logger
       end
+
+      @logger.level = Logger::WARN
 
       if thread_factory.nil?
         # the default thread factory uses Ruby's standard Thread#new
@@ -56,6 +59,10 @@ module RubySMB
     def add_share(share_provider)
       logger.debug("Adding #{share_provider.type} share: #{share_provider.name}")
       @shares[share_provider.name] = share_provider
+    end
+
+    def register_callback(packet_class, callback)
+      @callbacks[packet_class] = callback
     end
 
     # Run the server and accept any connections. For each connection, the block will be executed if specified. When the
@@ -92,6 +99,8 @@ module RubySMB
     # The shares that are provided by this server
     # @!attribute [r] shares
     attr_reader :shares
+
+    attr_reader :callbacks
   end
 end
 

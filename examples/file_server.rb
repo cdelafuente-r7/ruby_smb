@@ -18,4 +18,24 @@ end
 server = RubySMB::Server::Cli.build(options)
 server.add_share(RubySMB::Server::Share::Provider::Disk.new(options[:share_name], options[:share_path]))
 
+server.register_callback(
+  RubySMB::SMB2::Packet::CreateRequest,
+  Proc.new { |processor, request|
+    puts "in callback for Create request"
+    puts "share access: #{request.share_access.to_binary_s.unpack1('V')}"
+    request
+  }
+)
+
+server.register_callback(
+  RubySMB::SMB2::Packet::ReadResponse,
+  Proc.new { |processor, response|
+    puts "in callback for Read response"
+    new_file_content = "foobar"
+    response.data_length = new_file_content.length
+    response.buffer = new_file_content
+    response
+  }
+)
+
 RubySMB::Server::Cli.run(server)

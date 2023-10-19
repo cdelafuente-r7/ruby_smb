@@ -19,6 +19,13 @@ module RubySMB
         alias :do_read_andx_smb1      :proxy_share_io_smb1
         alias :do_transactions2_smb1  :proxy_share_io_smb1
 
+        def run_callback(share_processor, packet)
+          if @server.callbacks[packet.class]
+            return @server.callbacks[packet.class].call(share_processor, packet)
+          end
+          packet
+        end
+
         def proxy_share_io_smb2(request, session)
           # see: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-smb2/9a639360-87be-4d49-a1dd-4c6be0c020bd
           share_processor = session.tree_connect_table[request.smb2_header.tree_id]
@@ -29,7 +36,14 @@ module RubySMB
           end
 
           logger.debug("Received #{SMB2::Commands.name(request.smb2_header.command)} request for share: #{share_processor.provider.name}")
-          share_processor.send(__callee__, request)
+
+          request = run_callback(share_processor, request)
+
+          response = share_processor.send(__callee__, request)
+
+          response = run_callback(share_processor, response)
+
+          response
         end
 
         alias :do_close_smb2           :proxy_share_io_smb2
