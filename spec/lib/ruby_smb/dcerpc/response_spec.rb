@@ -131,40 +131,92 @@ RSpec.describe RubySMB::Dcerpc::Response do
   end
 
   describe '#stub_length' do
-    let(:stub_length) { rand(1..0xFF) }
-    before :example do
-      packet.stub = 'A' * stub_length
-    end
+    context 'with a stub' do
+      let(:stub_length) { rand(1..0xFF) }
+      before :example do
+        packet.stub = 'A' * stub_length
+      end
 
-    it 'returns the correct stub length' do
-      expect(packet.stub_length).to eq(stub_length)
-    end
-
-    context 'with auth verifier' do
       it 'returns the correct stub length' do
-        auth_size = rand(1..0xFF)
-        packet.pdu_header.auth_length = auth_size
-        packet.auth_value = 'B' * auth_size
-        expect(packet.stub_length).to eq(stub_length + packet.auth_pad.num_bytes)
+        expect(packet.stub_length).to eq(stub_length)
+      end
+
+      context 'with auth verifier' do
+        it 'returns the correct stub length' do
+          auth_size = rand(1..0xFF)
+          packet.pdu_header.auth_length = auth_size
+          packet.auth_value = 'B' * auth_size
+          expect(packet.stub_length).to eq(stub_length + packet.auth_pad.num_bytes)
+        end
       end
     end
+
+    context 'without a stub' do
+      it 'returns the correct stub length' do
+        expect(packet.stub_length).to eq(0)
+      end
+
+      context 'with auth verifier' do
+        it 'returns the correct stub length' do
+          auth_size = rand(1..0xFF)
+          packet.pdu_header.auth_length = auth_size
+          packet.auth_value = 'B' * auth_size
+          expect(packet.stub_length).to eq(packet.auth_pad.num_bytes)
+        end
+      end
+    end
+
   end
 
   describe '#read' do
     let(:response) { described_class.new }
-    let(:auth_size) { rand(1..0xFF) }
-    let(:stub_size) { rand(1..0xFF) }
-    before :example do
-      response.pdu_header.auth_length = auth_size
-      response.stub = 'A' * stub_size
-      response.auth_value = 'B' * auth_size
-      response.auth_pad = 'C' * response.auth_pad.size
+    context 'with a stub' do
+      let(:stub_size) { rand(1..0xFF) }
+      before :example do
+        response.stub = 'A' * stub_size
+      end
+
+      it 'sets #stub to the correct values' do
+        packet.read(response.to_binary_s)
+        expect(packet.stub).to eq(response.stub)
+      end
+
+      context 'with authentication verifier' do
+        let(:auth_size) { rand(1..0xFF) }
+        before :example do
+          response.pdu_header.auth_length = auth_size
+          response.auth_value = 'B' * auth_size
+          response.auth_pad = 'C' * response.auth_pad.size
+        end
+
+        it 'sets #stub and #auth_pad to the correct values' do
+          packet.read(response.to_binary_s)
+          expect(packet.stub).to eq(response.stub)
+          expect(packet.auth_pad).to eq(response.auth_pad)
+        end
+      end
     end
 
-    it 'sets #stub and #auth_pad to the correct values' do
-      packet.read(response.to_binary_s)
-      expect(packet.stub).to eq(response.stub)
-      expect(packet.auth_pad).to eq(response.auth_pad)
+    context 'without a stub' do
+      it 'sets #stub to the correct values' do
+        packet.read(response.to_binary_s)
+        expect(packet.stub).to eq(response.stub)
+      end
+
+      context 'with authentication verifier' do
+        let(:auth_size) { rand(1..0xFF) }
+        before :example do
+          response.pdu_header.auth_length = auth_size
+          response.auth_value = 'B' * auth_size
+          response.auth_pad = 'C' * response.auth_pad.size
+        end
+
+        it 'sets #stub and #auth_pad to the correct values' do
+          packet.read(response.to_binary_s)
+          expect(packet.stub).to eq(response.stub)
+          expect(packet.auth_pad).to eq(response.auth_pad)
+        end
+      end
     end
   end
 
